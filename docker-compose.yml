@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # MySQL база данных
+  mysql:
+    image: mysql:8.0
+    container_name: retail-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: retail_db
+      MYSQL_USER: retail_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-retail_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./php-api/full-data-import.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - retail-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PHP API
+  php-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: retail-php-api
+    restart: unless-stopped
+    volumes:
+      - ./php-api:/var/www/html
+    networks:
+      - retail-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_NAME: retail_db
+      DB_USER: retail_user
+      DB_PASS: ${MYSQL_PASSWORD:-retail_password}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-admin123}
+
+  # Next.js фронтенд
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile.nextjs
+    container_name: retail-nextjs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=/api
+      - NEXT_PUBLIC_SITE_URL=${SITE_URL:-http://localhost:3000}
+    networks:
+      - retail-network
+    depends_on:
+      - php-api
+      - mysql
+
+  # Nginx (для продакшена с доменом)
+  nginx:
+    image: nginx:alpine
+    container_name: retail-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - retail-network
+    depends_on:
+      - nextjs
+      - php-api
+
+volumes:
+  mysql_data:
+
+networks:
+  retail-network:
+    driver: bridge
+

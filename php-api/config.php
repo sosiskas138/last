@@ -9,15 +9,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-// Database configuration - ИЗМЕНИТЕ ЭТИ ДАННЫЕ
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'retail_db');
-define('DB_USER', 'retail_user');
-define('DB_PASS', 'your_password');
+// Database configuration - поддержка переменных окружения для Docker
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_NAME', getenv('DB_NAME') ?: 'retail_db');
+define('DB_USER', getenv('DB_USER') ?: 'retail_user');
+define('DB_PASS', getenv('DB_PASS') ?: 'your_password');
 
-// Admin credentials - ИЗМЕНИТЕ ЭТИ ДАННЫЕ
-define('ADMIN_USER', 'admin');
-define('ADMIN_PASS', 'admin123');
+// Admin credentials - поддержка переменных окружения для Docker
+define('ADMIN_USER', getenv('ADMIN_USER') ?: 'admin');
+define('ADMIN_PASS', getenv('ADMIN_PASS') ?: 'admin123');
 
 function getDB() {
     try {
