@@ -1,0 +1,1730 @@
+import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { api, ApiError } from '@/services/api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { Plus, Pencil, Trash2, LogOut, Building2, Calendar, Users, Search, ExternalLink, RefreshCw, TrendingUp, DollarSign, Handshake, FileUp, MessageSquare } from 'lucide-react';
+import { CATEGORIES, getCategoryName } from '@/data/categories';
+import { ImportExportTab } from '@/components/admin/ImportExportTab';
+import { ErrorReportsTab } from '@/components/admin/ErrorReportsTab';
+
+interface Company {
+  id: string;
+  name: string;
+  parent_company?: string;
+  logo?: string;
+  color: string;
+  status: string;
+  acquired_by?: string;
+  acquired_year?: number;
+}
+
+interface Event {
+  id: string;
+  company_id: string;
+  date: string;
+  title: string;
+  description?: string;
+  category: string;
+  subcategory?: string;
+}
+
+interface Founder {
+  id: string;
+  company_id: string;
+  name: string;
+  role?: string;
+  period?: string;
+  status: string;
+  ownership?: string;
+  background?: string;
+  key_contributions?: string[];
+  current_activity?: string;
+}
+
+interface IPO {
+  id: string;
+  company_id: string;
+  type: 'ipo' | 'spo';
+  date: string;
+  valuation?: string;
+  raised?: string;
+  revenue?: string;
+  shares?: string;
+  exchange?: string;
+  ticker?: string;
+  price?: string;
+  prospectus?: string;
+  market_position?: string;
+}
+
+interface Financial {
+  id: string;
+  company_id: string;
+  year: number;
+  quarter?: number;
+  revenue?: number;
+  profit?: number;
+  margin?: number;
+  store_count?: number;
+}
+
+interface MAEvent {
+  id: string;
+  date: string;
+  buyer: string;
+  target: string;
+  value?: string;
+  description?: string;
+}
+
+const Admin = () => {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [founders, setFounders] = useState<Founder[]>([]);
+  const [ipos, setIpos] = useState<IPO[]>([]);
+  const [financials, setFinancials] = useState<Financial[]>([]);
+  const [maEvents, setMaEvents] = useState<MAEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
+  const [editingIPO, setEditingIPO] = useState<IPO | null>(null);
+  const [editingFinancial, setEditingFinancial] = useState<Financial | null>(null);
+  const [editingMA, setEditingMA] = useState<MAEvent | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [currentTab, setCurrentTab] = useState('events');
+  
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCompanies, setFilterCompanies] = useState<string[]>([]);
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+
+  // Helper to clear all editing states
+  const clearEditingStates = () => {
+    setEditingCompany(null);
+    setEditingEvent(null);
+    setEditingFounder(null);
+    setEditingIPO(null);
+    setEditingFinancial(null);
+    setEditingMA(null);
+  };
+
+  useEffect(() => {
+    if (!api.isAuthenticated()) {
+      router.push('/admin/login');
+      return;
+    }
+    loadData();
+  }, [navigate]);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    const errors: string[] = [];
+    let loadedCounts = { companies: 0, events: 0, founders: 0, ipos: 0, financials: 0, ma: 0 };
+    
+    // Load each endpoint separately to handle partial failures
+    try {
+      const companiesData = await api.getCompanies();
+      const arr = Array.isArray(companiesData) ? companiesData : [];
+      setCompanies(arr);
+      loadedCounts.companies = arr.length;
+    } catch (error) {
+      errors.push('компании');
+      console.error('Failed to load companies:', error);
+    }
+    
+    try {
+      const eventsData = await api.getEvents();
+      const arr = Array.isArray(eventsData) ? eventsData : [];
+      setEvents(arr);
+      loadedCounts.events = arr.length;
+    } catch (error) {
+      errors.push('события');
+      console.error('Failed to load events:', error);
+    }
+    
+    try {
+      const foundersData = await api.getFounders();
+      const arr = Array.isArray(foundersData) ? foundersData : [];
+      setFounders(arr);
+      loadedCounts.founders = arr.length;
+    } catch (error) {
+      errors.push('основатели');
+      console.error('Failed to load founders:', error);
+    }
+    
+    try {
+      const iposData = await api.getIPO();
+      const arr = Array.isArray(iposData) ? iposData : [];
+      setIpos(arr);
+      loadedCounts.ipos = arr.length;
+    } catch (error) {
+      errors.push('IPO/SPO');
+      console.error('Failed to load IPO:', error);
+    }
+    
+    try {
+      const financialsData = await api.getFinancials();
+      const arr = Array.isArray(financialsData) ? financialsData : [];
+      setFinancials(arr);
+      loadedCounts.financials = arr.length;
+    } catch (error) {
+      errors.push('финансы');
+      console.error('Failed to load financials:', error);
+    }
+    
+    try {
+      const maData = await api.getMA();
+      const arr = Array.isArray(maData) ? maData : [];
+      setMaEvents(arr);
+      loadedCounts.ma = arr.length;
+    } catch (error) {
+      errors.push('M&A');
+      console.error('Failed to load M&A:', error);
+    }
+    
+    if (errors.length > 0) {
+      toast({
+        title: 'Не удалось загрузить некоторые данные',
+        description: `Проблемы с: ${errors.join(', ')}. Убедитесь, что PHP файлы (ipo.php, financials.php, ma.php) загружены на сервер.`,
+        variant: 'destructive',
+      });
+    } else {
+      toast({
+        title: 'Данные загружены',
+        description: `${loadedCounts.companies} компаний, ${loadedCounts.events} событий, ${loadedCounts.ipos} IPO, ${loadedCounts.financials} финансов, ${loadedCounts.ma} M&A`,
+      });
+    }
+    setIsLoading(false);
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    router.push('/admin/login');
+  };
+
+  // Get company by ID
+  const getCompany = (id: string) => companies.find(c => c.id === id);
+
+  // Filtered data
+  const filteredEvents = useMemo(() => {
+    return events.filter(event => {
+      const matchesSearch = searchQuery === '' || 
+        event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCompany = filterCompanies.length === 0 || filterCompanies.includes(event.company_id);
+      const matchesCategory = filterCategory === 'all' || event.category === filterCategory;
+      return matchesSearch && matchesCompany && matchesCategory;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [events, searchQuery, filterCompanies, filterCategory]);
+
+  const filteredFounders = useMemo(() => {
+    return founders.filter(founder => {
+      const matchesSearch = searchQuery === '' || 
+        founder.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        founder.role?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCompany = filterCompanies.length === 0 || filterCompanies.includes(founder.company_id);
+      return matchesSearch && matchesCompany;
+    });
+  }, [founders, searchQuery, filterCompanies]);
+
+  const filteredCompanies = useMemo(() => {
+    return companies.filter(company => {
+      const matchesSearch = searchQuery === '' || 
+        company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        company.id.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    });
+  }, [companies, searchQuery]);
+
+  const filteredIPOs = useMemo(() => {
+    return ipos.filter(ipo => {
+      const company = getCompany(ipo.company_id);
+      const matchesSearch = searchQuery === '' || 
+        company?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ipo.exchange?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ipo.ticker?.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCompany = filterCompanies.length === 0 || filterCompanies.includes(ipo.company_id);
+      return matchesSearch && matchesCompany;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [ipos, searchQuery, filterCompanies, companies]);
+
+  const filteredFinancials = useMemo(() => {
+    return financials.filter(f => {
+      const company = getCompany(f.company_id);
+      const matchesSearch = searchQuery === '' || 
+        company?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        f.year.toString().includes(searchQuery);
+      const matchesCompany = filterCompanies.length === 0 || filterCompanies.includes(f.company_id);
+      return matchesSearch && matchesCompany;
+    }).sort((a, b) => {
+      if (a.company_id !== b.company_id) return a.company_id.localeCompare(b.company_id);
+      if (a.year !== b.year) return b.year - a.year;
+      return (b.quarter || 0) - (a.quarter || 0);
+    });
+  }, [financials, searchQuery, filterCompanies, companies]);
+
+  const filteredMA = useMemo(() => {
+    return maEvents.filter(ma => {
+      const matchesSearch = searchQuery === '' || 
+        ma.buyer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ma.target.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ma.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [maEvents, searchQuery]);
+
+  // Validation helpers
+  const validateDate = (date: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(date);
+  const validateYear = (year: number): boolean => year >= 1990 && year <= 2030;
+  const validateQuarter = (quarter: number | undefined): boolean => !quarter || (quarter >= 1 && quarter <= 4);
+
+  const handleSaveCompany = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const parentCompany = formData.get('parent_company') as string;
+    const acquiredBy = formData.get('acquired_by') as string;
+    const data = {
+      id: formData.get('id') as string,
+      name: formData.get('name') as string,
+      parent_company: parentCompany && parentCompany !== '_none_' ? parentCompany : undefined,
+      logo: formData.get('logo') as string || undefined,
+      color: formData.get('color') as string,
+      status: formData.get('status') as string,
+      acquired_by: acquiredBy && acquiredBy !== '_none_' ? acquiredBy : undefined,
+      acquired_year: formData.get('acquired_year') ? Number(formData.get('acquired_year')) : undefined,
+    };
+
+    try {
+      if (editingCompany) {
+        await api.updateCompany(editingCompany.id, data);
+        toast({ title: '✓ Компания обновлена', description: data.name });
+      } else {
+        await api.createCompany(data);
+        toast({ title: '✓ Компания создана', description: data.name });
+      }
+      setDialogOpen(false);
+      setEditingCompany(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить компанию';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveEvent = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      id: formData.get('id') as string || undefined,
+      company_id: formData.get('company_id') as string,
+      date: formData.get('date') as string,
+      title: formData.get('title') as string,
+      description: formData.get('description') as string || undefined,
+      category: formData.get('category') as string,
+      subcategory: formData.get('subcategory') as string || undefined,
+    };
+
+    try {
+      if (editingEvent) {
+        await api.updateEvent(editingEvent.id, data);
+        toast({ title: '✓ Событие обновлено', description: data.title });
+      } else {
+        await api.createEvent(data);
+        toast({ title: '✓ Событие создано', description: data.title });
+      }
+      setDialogOpen(false);
+      setEditingEvent(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить событие';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveFounder = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    const keyContributions = (formData.get('key_contributions') as string)
+      ?.split('\n')
+      .filter(Boolean) || [];
+    
+    const data = {
+      id: formData.get('id') as string || undefined,
+      company_id: formData.get('company_id') as string,
+      name: formData.get('name') as string,
+      role: formData.get('role') as string || undefined,
+      period: formData.get('period') as string || undefined,
+      status: formData.get('status') as string,
+      ownership: formData.get('ownership') ? `${formData.get('ownership')}%` : undefined,
+      background: formData.get('background') as string || undefined,
+      key_contributions: keyContributions.length > 0 ? keyContributions : undefined,
+      current_activity: formData.get('current_activity') as string || undefined,
+    };
+
+    try {
+      if (editingFounder) {
+        await api.updateFounder(editingFounder.id, data);
+        toast({ title: '✓ Основатель обновлен', description: data.name });
+      } else {
+        await api.createFounder(data);
+        toast({ title: '✓ Основатель создан', description: data.name });
+      }
+      setDialogOpen(false);
+      setEditingFounder(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить основателя';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveIPO = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    
+    const date = formData.get('date') as string;
+    if (!validateDate(date)) {
+      toast({ title: 'Ошибка валидации', description: 'Дата должна быть в формате YYYY-MM-DD', variant: 'destructive' });
+      setIsSaving(false);
+      return;
+    }
+    
+    const data = {
+      company_id: formData.get('company_id') as string,
+      type: formData.get('type') as string,
+      date,
+      valuation: formData.get('valuation') as string || undefined,
+      raised: formData.get('raised') as string || undefined,
+      revenue: formData.get('revenue') as string || undefined,
+      shares: formData.get('shares') as string || undefined,
+      exchange: formData.get('exchange') as string || undefined,
+      ticker: formData.get('ticker') as string || undefined,
+      price: formData.get('price') as string || undefined,
+      prospectus: formData.get('prospectus') as string || undefined,
+      market_position: formData.get('market_position') as string || undefined,
+    };
+
+    try {
+      if (editingIPO) {
+        await api.updateIPO(editingIPO.id, data);
+        toast({ title: '✓ IPO/SPO обновлено' });
+      } else {
+        await api.createIPO(data);
+        toast({ title: '✓ IPO/SPO создано' });
+      }
+      setDialogOpen(false);
+      setEditingIPO(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить IPO/SPO';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveFinancial = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    
+    const year = Number(formData.get('year'));
+    const quarterStr = formData.get('quarter') as string;
+    const quarter = quarterStr && quarterStr !== 'annual' ? Number(quarterStr) : undefined;
+    
+    if (!validateYear(year)) {
+      toast({ title: 'Ошибка валидации', description: 'Год должен быть от 1990 до 2030', variant: 'destructive' });
+      setIsSaving(false);
+      return;
+    }
+    
+    if (!validateQuarter(quarter)) {
+      toast({ title: 'Ошибка валидации', description: 'Квартал должен быть от 1 до 4', variant: 'destructive' });
+      setIsSaving(false);
+      return;
+    }
+    
+    const data = {
+      company_id: formData.get('company_id') as string,
+      year,
+      quarter: quarter || undefined,
+      revenue: formData.get('revenue') ? Number(formData.get('revenue')) : undefined,
+      profit: formData.get('profit') ? Number(formData.get('profit')) : undefined,
+      margin: formData.get('margin') ? Number(formData.get('margin')) : undefined,
+      store_count: formData.get('store_count') ? Number(formData.get('store_count')) : undefined,
+    };
+
+    try {
+      if (editingFinancial) {
+        await api.updateFinancial(editingFinancial.id, data);
+        toast({ title: '✓ Финансы обновлены' });
+      } else {
+        await api.createFinancial(data);
+        toast({ title: '✓ Финансы добавлены' });
+      }
+      setDialogOpen(false);
+      setEditingFinancial(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить финансы';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveMA = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSaving(true);
+    const formData = new FormData(e.currentTarget);
+    
+    const date = formData.get('date') as string;
+    if (!validateDate(date)) {
+      toast({ title: 'Ошибка валидации', description: 'Дата должна быть в формате YYYY-MM-DD', variant: 'destructive' });
+      setIsSaving(false);
+      return;
+    }
+    
+    const id = formData.get('id') as string;
+    if (!editingMA && !/^[a-z0-9\-_]+$/i.test(id)) {
+      toast({ title: 'Ошибка валидации', description: 'ID должен содержать только латиницу, цифры, дефисы', variant: 'destructive' });
+      setIsSaving(false);
+      return;
+    }
+    
+    const data = {
+      id,
+      date,
+      buyer: formData.get('buyer') as string,
+      target: formData.get('target') as string,
+      value: formData.get('value') as string || undefined,
+      description: formData.get('description') as string || undefined,
+    };
+
+    try {
+      if (editingMA) {
+        await api.updateMA(editingMA.id, data);
+        toast({ title: '✓ M&A обновлено' });
+      } else {
+        await api.createMA(data);
+        toast({ title: '✓ M&A создано' });
+      }
+      setDialogOpen(false);
+      setEditingMA(null);
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось сохранить M&A';
+      toast({ title: 'Ошибка сохранения', description: message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+  };
+
+  const handleDelete = async (type: 'company' | 'event' | 'founder' | 'ipo' | 'financial' | 'ma', id: string, name: string) => {
+    if (!confirm(`Удалить "${name}"?`)) return;
+
+    try {
+      if (type === 'company') await api.deleteCompany(id);
+      else if (type === 'event') await api.deleteEvent(id);
+      else if (type === 'founder') await api.deleteFounder(id);
+      else if (type === 'ipo') await api.deleteIPO(id);
+      else if (type === 'financial') await api.deleteFinancial(id);
+      else if (type === 'ma') await api.deleteMA(id);
+      
+      toast({ title: '✓ Удалено', description: name });
+      loadData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Не удалось удалить запись';
+      toast({ title: 'Ошибка удаления', description: message, variant: 'destructive' });
+    }
+  };
+
+  const openAddDialog = () => {
+    clearEditingStates();
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (type: 'company' | 'event' | 'founder' | 'ipo' | 'financial' | 'ma', item: any) => {
+    clearEditingStates();
+    switch (type) {
+      case 'company': setEditingCompany(item); break;
+      case 'event': setEditingEvent(item); break;
+      case 'founder': setEditingFounder(item); break;
+      case 'ipo': setEditingIPO(item); break;
+      case 'financial': setEditingFinancial(item); break;
+      case 'ma': setEditingMA(item); break;
+    }
+    setDialogOpen(true);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+      active: 'default',
+      inactive: 'secondary',
+      acquired: 'outline',
+    };
+    const labels: Record<string, string> = {
+      active: 'Активна',
+      inactive: 'Неактивна',
+      acquired: 'Поглощена',
+    };
+    return <Badge variant={variants[status] || 'secondary'}>{labels[status] || status}</Badge>;
+  };
+
+  const getAddButtonText = () => {
+    switch (currentTab) {
+      case 'companies': return 'Добавить компанию';
+      case 'events': return 'Добавить событие';
+      case 'founders': return 'Добавить основателя';
+      case 'ipo': return 'Добавить IPO/SPO';
+      case 'financials': return 'Добавить финансы';
+      case 'ma': return 'Добавить M&A';
+      case 'import-export': return '';
+      default: return 'Добавить';
+    }
+  };
+
+  const showAddButton = currentTab !== 'import-export' && currentTab !== 'error-reports';
+
+  const getDialogTitle = () => {
+    if (currentTab === 'companies') return editingCompany ? 'Редактировать компанию' : 'Новая компания';
+    if (currentTab === 'events') return editingEvent ? 'Редактировать событие' : 'Новое событие';
+    if (currentTab === 'founders') return editingFounder ? 'Редактировать основателя' : 'Новый основатель';
+    if (currentTab === 'ipo') return editingIPO ? 'Редактировать IPO/SPO' : 'Новое IPO/SPO';
+    if (currentTab === 'financials') return editingFinancial ? 'Редактировать финансы' : 'Новые финансы';
+    if (currentTab === 'ma') return editingMA ? 'Редактировать M&A' : 'Новое M&A';
+    return '';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Загрузка данных...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-card sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold">Админ-панель</h1>
+            <Badge variant="outline" className="hidden sm:flex">
+              {companies.length} компаний · {events.length} событий · {ipos.length} IPO · {financials.length} фин.данных
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/" target="_blank">
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Открыть сайт
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={loadData}>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-6">
+        <Tabs value={currentTab} onValueChange={setCurrentTab}>
+          {/* Tabs Header with Filters */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <TabsList className="flex-wrap h-auto">
+                <TabsTrigger value="events" className="gap-2">
+                  <Calendar className="w-4 h-4" />
+                  События
+                  <Badge variant="secondary" className="ml-1">{events.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="companies" className="gap-2">
+                  <Building2 className="w-4 h-4" />
+                  Компании
+                  <Badge variant="secondary" className="ml-1">{companies.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="founders" className="gap-2">
+                  <Users className="w-4 h-4" />
+                  Основатели
+                  <Badge variant="secondary" className="ml-1">{founders.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="ipo" className="gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  IPO/SPO
+                  <Badge variant="secondary" className="ml-1">{ipos.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="financials" className="gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Финансы
+                  <Badge variant="secondary" className="ml-1">{financials.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="ma" className="gap-2">
+                  <Handshake className="w-4 h-4" />
+                  M&A
+                  <Badge variant="secondary" className="ml-1">{maEvents.length}</Badge>
+                </TabsTrigger>
+                <TabsTrigger value="import-export" className="gap-2">
+                  <FileUp className="w-4 h-4" />
+                  Импорт/Экспорт
+                </TabsTrigger>
+                <TabsTrigger value="error-reports" className="gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Ошибки
+                </TabsTrigger>
+              </TabsList>
+              
+              {showAddButton && (
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button onClick={openAddDialog}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      {getAddButtonText()}
+                    </Button>
+                  </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{getDialogTitle()}</DialogTitle>
+                  </DialogHeader>
+
+                  {/* Company Form */}
+                  {currentTab === 'companies' && (
+                    <form onSubmit={handleSaveCompany} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="id">ID (латиницей) *</Label>
+                          <Input id="id" name="id" defaultValue={editingCompany?.id} required disabled={!!editingCompany} placeholder="pyaterochka" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Название *</Label>
+                          <Input id="name" name="name" defaultValue={editingCompany?.name} required placeholder="Пятёрочка" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="color">Цвет (HEX) *</Label>
+                          <div className="flex gap-2">
+                            <Input 
+                              id="color" 
+                              name="color" 
+                              defaultValue={editingCompany?.color || '#E31837'} 
+                              required 
+                              className="flex-1"
+                              pattern="^#[0-9A-Fa-f]{6}$"
+                              title="Цвет в формате #RRGGBB"
+                            />
+                            <input 
+                              type="color" 
+                              defaultValue={editingCompany?.color || '#E31837'}
+                              onChange={(e) => {
+                                const input = document.getElementById('color') as HTMLInputElement;
+                                if (input) input.value = e.target.value;
+                              }}
+                              className="w-10 h-10 rounded border cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="status">Статус *</Label>
+                          <Select name="status" defaultValue={editingCompany?.status || 'active'}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Активна</SelectItem>
+                              <SelectItem value="inactive">Неактивна</SelectItem>
+                              <SelectItem value="acquired">Поглощена</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="parent_company">Материнская компания</Label>
+                          <Select name="parent_company" defaultValue={editingCompany?.parent_company || '_none_'}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Нет" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none_">Нет</SelectItem>
+                              {companies.filter(c => c.id !== editingCompany?.id).map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="logo">Логотип (URL)</Label>
+                          <Input id="logo" name="logo" defaultValue={editingCompany?.logo} placeholder="https://..." />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="acquired_by">Поглощена кем</Label>
+                          <Select name="acquired_by" defaultValue={editingCompany?.acquired_by || '_none_'}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Нет" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none_">Нет</SelectItem>
+                              {companies.filter(c => c.id !== editingCompany?.id).map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="acquired_year">Год поглощения</Label>
+                          <Input id="acquired_year" name="acquired_year" type="number" min="1990" max="2030" defaultValue={editingCompany?.acquired_year} placeholder="2023" />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full" disabled={isSaving}>
+                        {isSaving ? 'Сохранение...' : 'Сохранить компанию'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {/* Event Form */}
+                  {currentTab === 'events' && (
+                    <form onSubmit={handleSaveEvent} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="company_id">Компания *</Label>
+                          <Select name="company_id" defaultValue={editingEvent?.company_id || (filterCompanies.length === 1 ? filterCompanies[0] : '')}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите компанию" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {companies.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                                    {c.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="date">Дата (YYYY-MM-DD) *</Label>
+                          <Input id="date" name="date" type="date" defaultValue={editingEvent?.date} required />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="title">Заголовок *</Label>
+                          <Input id="title" name="title" defaultValue={editingEvent?.title} required placeholder="Открытие первого магазина" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="category">Категория *</Label>
+                          <Select name="category" defaultValue={editingEvent?.category || (filterCategory !== 'all' ? filterCategory : '')}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите категорию" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CATEGORIES.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="subcategory">Подкатегория</Label>
+                          <Input id="subcategory" name="subcategory" defaultValue={editingEvent?.subcategory} placeholder="Необязательно" />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="description">Описание</Label>
+                          <Textarea id="description" name="description" defaultValue={editingEvent?.description} rows={4} placeholder="Подробное описание события..." />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full" disabled={isSaving}>
+                        {isSaving ? 'Сохранение...' : 'Сохранить событие'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {/* Founder Form */}
+                  {currentTab === 'founders' && (
+                    <form onSubmit={handleSaveFounder} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="company_id">Компания *</Label>
+                          <Select name="company_id" defaultValue={editingFounder?.company_id || (filterCompanies.length === 1 ? filterCompanies[0] : '')}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите компанию" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {companies.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                                    {c.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Имя *</Label>
+                          <Input id="name" name="name" defaultValue={editingFounder?.name} required placeholder="Иван Иванов" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="role">Должность</Label>
+                          <Input id="role" name="role" defaultValue={editingFounder?.role} placeholder="Генеральный директор" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="period">Период работы</Label>
+                          <Input id="period" name="period" defaultValue={editingFounder?.period} placeholder="1999-2010" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="status">Статус *</Label>
+                          <Select name="status" defaultValue={editingFounder?.status || 'active'}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Активен</SelectItem>
+                              <SelectItem value="inactive">Неактивен</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ownership">Доля владения (%)</Label>
+                          <Input 
+                            id="ownership" 
+                            name="ownership" 
+                            type="number" 
+                            step="0.01" 
+                            min="0" 
+                            max="100" 
+                            defaultValue={editingFounder?.ownership?.replace('%', '')} 
+                            placeholder="25"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="background">Биография</Label>
+                          <Textarea id="background" name="background" defaultValue={editingFounder?.background} rows={3} placeholder="Краткая биография..." />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="key_contributions">Ключевые достижения (по одному на строку)</Label>
+                          <Textarea 
+                            id="key_contributions" 
+                            name="key_contributions" 
+                            defaultValue={editingFounder?.key_contributions?.join('\n')} 
+                            rows={3} 
+                            placeholder="Создал сеть из 100 магазинов&#10;Увеличил выручку в 5 раз"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="current_activity">Текущая деятельность</Label>
+                          <Textarea id="current_activity" name="current_activity" defaultValue={editingFounder?.current_activity} rows={2} placeholder="Чем занимается сейчас..." />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full" disabled={isSaving}>
+                        {isSaving ? 'Сохранение...' : 'Сохранить основателя'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {/* IPO Form */}
+                  {currentTab === 'ipo' && (
+                    <form onSubmit={handleSaveIPO} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="company_id">Компания *</Label>
+                          <Select name="company_id" defaultValue={editingIPO?.company_id || (filterCompanies.length === 1 ? filterCompanies[0] : '')}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите компанию" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {companies.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                                    {c.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="type">Тип *</Label>
+                          <Select name="type" defaultValue={editingIPO?.type || 'ipo'}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ipo">IPO (первичное размещение)</SelectItem>
+                              <SelectItem value="spo">SPO (вторичное размещение)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="date">Дата (YYYY-MM-DD) *</Label>
+                          <Input id="date" name="date" type="date" defaultValue={editingIPO?.date} required />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="exchange">Биржа</Label>
+                          <Input id="exchange" name="exchange" defaultValue={editingIPO?.exchange} placeholder="MOEX, LSE, NYSE" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ticker">Тикер</Label>
+                          <Input id="ticker" name="ticker" defaultValue={editingIPO?.ticker} placeholder="MGNT" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="price">Цена размещения</Label>
+                          <Input id="price" name="price" defaultValue={editingIPO?.price} placeholder="$27 за акцию" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="valuation">Оценка компании</Label>
+                          <Input id="valuation" name="valuation" defaultValue={editingIPO?.valuation} placeholder="~$2 млрд" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="raised">Привлечено</Label>
+                          <Input id="raised" name="raised" defaultValue={editingIPO?.raised} placeholder="$368 млн" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="revenue">Выручка на момент IPO</Label>
+                          <Input id="revenue" name="revenue" defaultValue={editingIPO?.revenue} placeholder="$2,5 млрд (2006)" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="shares">Доля размещения</Label>
+                          <Input id="shares" name="shares" defaultValue={editingIPO?.shares} placeholder="18,94% уставного капитала" />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="prospectus">Описание IPO/SPO</Label>
+                          <Textarea id="prospectus" name="prospectus" defaultValue={editingIPO?.prospectus} rows={4} placeholder="Цели размещения, координаторы..." />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="market_position">Рыночная позиция</Label>
+                          <Textarea id="market_position" name="market_position" defaultValue={editingIPO?.market_position} rows={4} placeholder="Позиция компании на рынке в момент размещения..." />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full" disabled={isSaving}>
+                        {isSaving ? 'Сохранение...' : 'Сохранить IPO/SPO'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {/* Financial Form */}
+                  {currentTab === 'financials' && (
+                    <form onSubmit={handleSaveFinancial} className="space-y-4">
+                      {companies.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <p>Сначала добавьте хотя бы одну компанию во вкладке "Компании"</p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="bg-muted/50 p-3 rounded-lg text-sm mb-4">
+                            <strong>Формат данных:</strong>
+                            <ul className="list-disc list-inside mt-1 text-muted-foreground">
+                              <li>Выручка: в млрд ₽ (например: 68.1)</li>
+                              <li>Прибыль: в млн USD (например: 56.9)</li>
+                              <li>Маржа: в % (например: 2.3)</li>
+                              <li>Магазины: целое число (например: 1893)</li>
+                            </ul>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="company_id">Компания *</Label>
+                              <Select name="company_id" defaultValue={editingFinancial?.company_id || (filterCompanies.length === 1 ? filterCompanies[0] : companies[0]?.id || '')}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Выберите компанию" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {companies.map((c) => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
+                                        {c.name}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="year">Год (1990-2030) *</Label>
+                              <Input id="year" name="year" type="number" min="1990" max="2030" defaultValue={editingFinancial?.year || new Date().getFullYear()} required />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="quarter">Квартал (1-4, пусто = год)</Label>
+                              <Select name="quarter" defaultValue={editingFinancial?.quarter?.toString() || ''}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Годовые данные" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="annual">Годовые данные</SelectItem>
+                                  <SelectItem value="1">Q1</SelectItem>
+                                  <SelectItem value="2">Q2</SelectItem>
+                                  <SelectItem value="3">Q3</SelectItem>
+                                  <SelectItem value="4">Q4</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="revenue">Выручка (млрд ₽)</Label>
+                              <Input id="revenue" name="revenue" type="number" step="0.01" min="0" defaultValue={editingFinancial?.revenue} placeholder="68.1" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="profit">Прибыль (млн USD)</Label>
+                              <Input id="profit" name="profit" type="number" step="0.01" defaultValue={editingFinancial?.profit} placeholder="56.9" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="margin">Маржа (%)</Label>
+                              <Input id="margin" name="margin" type="number" step="0.01" min="-100" max="100" defaultValue={editingFinancial?.margin} placeholder="2.3" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="store_count">Кол-во магазинов</Label>
+                              <Input id="store_count" name="store_count" type="number" min="0" defaultValue={editingFinancial?.store_count} placeholder="1893" />
+                            </div>
+                          </div>
+                          <Button type="submit" className="w-full" disabled={isSaving}>
+                            {isSaving ? 'Сохранение...' : 'Сохранить финансы'}
+                          </Button>
+                        </>
+                      )}
+                    </form>
+                  )}
+
+                  {/* M&A Form */}
+                  {currentTab === 'ma' && (
+                    <form onSubmit={handleSaveMA} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="id">ID (латиницей) *</Label>
+                          <Input 
+                            id="id" 
+                            name="id" 
+                            defaultValue={editingMA?.id} 
+                            required 
+                            disabled={!!editingMA} 
+                            placeholder="magnit-2021-dixy"
+                            pattern="^[a-zA-Z0-9\-_]+$"
+                            title="Только латиница, цифры, дефисы и подчёркивания"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="date">Дата (YYYY-MM-DD) *</Label>
+                          <Input id="date" name="date" type="date" defaultValue={editingMA?.date} required />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="buyer">Покупатель *</Label>
+                          <Input id="buyer" name="buyer" defaultValue={editingMA?.buyer} required placeholder="Магнит" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="target">Цель (приобретаемая компания) *</Label>
+                          <Input id="target" name="target" defaultValue={editingMA?.target} required placeholder="DIXY" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="value">Сумма сделки</Label>
+                          <Input id="value" name="value" defaultValue={editingMA?.value} placeholder="87,6 млрд руб" />
+                        </div>
+                        <div className="col-span-2 space-y-2">
+                          <Label htmlFor="description">Описание сделки</Label>
+                          <Textarea id="description" name="description" defaultValue={editingMA?.description} rows={4} placeholder="Подробности сделки, что было приобретено..." />
+                        </div>
+                      </div>
+                      <Button type="submit" className="w-full" disabled={isSaving}>
+                        {isSaving ? 'Сохранение...' : 'Сохранить M&A'}
+                      </Button>
+                    </form>
+                  )}
+                </DialogContent>
+              </Dialog>
+              )}
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Поиск..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              {currentTab !== 'ma' && currentTab !== 'companies' && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 h-10 px-3 py-2 text-sm border rounded-md bg-background hover:bg-accent min-w-[200px]"
+                    onClick={(e) => {
+                      const menu = e.currentTarget.nextElementSibling;
+                      if (menu) menu.classList.toggle('hidden');
+                    }}
+                  >
+                    <span className="truncate">
+                      {filterCompanies.length === 0 
+                        ? 'Все компании' 
+                        : filterCompanies.length === 1 
+                          ? companies.find(c => c.id === filterCompanies[0])?.name 
+                          : `${filterCompanies.length} компаний`}
+                    </span>
+                  </button>
+                  <div className="hidden absolute top-full left-0 mt-1 w-[250px] bg-popover border rounded-md shadow-lg z-50 max-h-[300px] overflow-y-auto">
+                    <div className="p-2 border-b flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="flex-1 text-xs"
+                        onClick={() => setFilterCompanies(companies.map(c => c.id))}
+                      >
+                        Выбрать все
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="flex-1 text-xs"
+                        onClick={() => setFilterCompanies([])}
+                      >
+                        Сбросить
+                      </Button>
+                    </div>
+                    {companies.map((c) => (
+                      <label 
+                        key={c.id} 
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-accent cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={filterCompanies.includes(c.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setFilterCompanies([...filterCompanies, c.id]);
+                            } else {
+                              setFilterCompanies(filterCompanies.filter(id => id !== c.id));
+                            }
+                          }}
+                          className="rounded border-input"
+                        />
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
+                        <span className="truncate text-sm">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {currentTab === 'events' && (
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Все категории" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все категории</SelectItem>
+                    {CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {(searchQuery || filterCompanies.length > 0 || filterCategory !== 'all') && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterCompanies([]);
+                    setFilterCategory('all');
+                  }}
+                >
+                  Сбросить фильтры
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Events Tab */}
+          <TabsContent value="events">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">
+                  События 
+                  {filteredEvents.length !== events.length && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      (показано {filteredEvents.length} из {events.length})
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredEvents.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {events.length === 0 ? 'Нет событий. Добавьте первое!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Дата</TableHead>
+                        <TableHead className="w-[150px]">Компания</TableHead>
+                        <TableHead>Заголовок</TableHead>
+                        <TableHead className="w-[200px]">Категория</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEvents.map((event) => {
+                        const company = getCompany(event.company_id);
+                        return (
+                          <TableRow key={event.id}>
+                            <TableCell className="font-mono text-sm">{event.date}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: company?.color || '#666' }} 
+                                />
+                                <span className="truncate">{company?.name || event.company_id}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-md">
+                                <p className="truncate font-medium">{event.title}</p>
+                                {event.description && (
+                                  <p className="text-sm text-muted-foreground truncate">{event.description}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {getCategoryName(event.category as any)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog('event', event)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete('event', event.id, event.title)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Companies Tab */}
+          <TabsContent value="companies">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Компании</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredCompanies.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {companies.length === 0 ? 'Нет компаний. Добавьте первую!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[150px]">ID</TableHead>
+                        <TableHead>Название</TableHead>
+                        <TableHead className="w-[120px]">Статус</TableHead>
+                        <TableHead className="w-[100px]">Цвет</TableHead>
+                        <TableHead className="w-[100px]">Событий</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCompanies.map((company) => {
+                        const eventCount = events.filter(e => e.company_id === company.id).length;
+                        return (
+                          <TableRow key={company.id}>
+                            <TableCell className="font-mono text-sm">{company.id}</TableCell>
+                            <TableCell className="font-medium">{company.name}</TableCell>
+                            <TableCell>{getStatusBadge(company.status)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded border" style={{ backgroundColor: company.color }} />
+                                <span className="text-xs font-mono">{company.color}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{eventCount}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog('company', company)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete('company', company.id, company.name)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Founders Tab */}
+          <TabsContent value="founders">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">
+                  Основатели
+                  {filteredFounders.length !== founders.length && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      (показано {filteredFounders.length} из {founders.length})
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredFounders.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {founders.length === 0 ? 'Нет основателей. Добавьте первого!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Имя</TableHead>
+                        <TableHead className="w-[150px]">Компания</TableHead>
+                        <TableHead>Должность</TableHead>
+                        <TableHead className="w-[100px]">Период</TableHead>
+                        <TableHead className="w-[100px]">Статус</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredFounders.map((founder) => {
+                        const company = getCompany(founder.company_id);
+                        return (
+                          <TableRow key={founder.id}>
+                            <TableCell className="font-medium">{founder.name}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: company?.color || '#666' }} 
+                                />
+                                <span className="truncate">{company?.name || founder.company_id}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{founder.role || '—'}</TableCell>
+                            <TableCell className="text-sm">{founder.period || '—'}</TableCell>
+                            <TableCell>
+                              <Badge variant={founder.status === 'active' ? 'default' : 'secondary'}>
+                                {founder.status === 'active' ? 'Активен' : 'Неактивен'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog('founder', founder)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete('founder', founder.id, founder.name)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* IPO Tab */}
+          <TabsContent value="ipo">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">
+                  IPO и SPO
+                  {filteredIPOs.length !== ipos.length && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      (показано {filteredIPOs.length} из {ipos.length})
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredIPOs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {ipos.length === 0 ? 'Нет IPO/SPO. Добавьте первое!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Дата</TableHead>
+                        <TableHead className="w-[150px]">Компания</TableHead>
+                        <TableHead className="w-[80px]">Тип</TableHead>
+                        <TableHead>Биржа / Тикер</TableHead>
+                        <TableHead>Привлечено</TableHead>
+                        <TableHead>Оценка</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredIPOs.map((ipo) => {
+                        const company = getCompany(ipo.company_id);
+                        return (
+                          <TableRow key={ipo.id}>
+                            <TableCell className="font-mono text-sm">{ipo.date}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: company?.color || '#666' }} 
+                                />
+                                <span className="truncate">{company?.name || ipo.company_id}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={ipo.type === 'ipo' ? 'default' : 'secondary'}>
+                                {ipo.type.toUpperCase()}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {ipo.exchange && <span>{ipo.exchange}</span>}
+                              {ipo.ticker && <span className="text-muted-foreground ml-1">({ipo.ticker})</span>}
+                            </TableCell>
+                            <TableCell className="text-sm">{ipo.raised || '—'}</TableCell>
+                            <TableCell className="text-sm">{ipo.valuation || '—'}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog('ipo', ipo)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete('ipo', ipo.id, `${ipo.type.toUpperCase()} ${company?.name || ipo.company_id}`)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Financials Tab */}
+          <TabsContent value="financials">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">
+                  Финансовые данные
+                  {filteredFinancials.length !== financials.length && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      (показано {filteredFinancials.length} из {financials.length})
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredFinancials.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {financials.length === 0 ? 'Нет финансовых данных. Добавьте первые!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[150px]">Компания</TableHead>
+                        <TableHead className="w-[100px]">Период</TableHead>
+                        <TableHead>Выручка (млрд ₽)</TableHead>
+                        <TableHead>Прибыль (млн $)</TableHead>
+                        <TableHead>Маржа (%)</TableHead>
+                        <TableHead>Магазины</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredFinancials.map((f) => {
+                        const company = getCompany(f.company_id);
+                        return (
+                          <TableRow key={f.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full flex-shrink-0" 
+                                  style={{ backgroundColor: company?.color || '#666' }} 
+                                />
+                                <span className="truncate">{company?.name || f.company_id}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono">
+                              {f.year}{f.quarter ? ` Q${f.quarter}` : ''}
+                            </TableCell>
+                            <TableCell>{f.revenue?.toLocaleString('ru-RU') || '—'}</TableCell>
+                            <TableCell>{f.profit?.toLocaleString('ru-RU') || '—'}</TableCell>
+                            <TableCell>{f.margin ? `${f.margin}%` : '—'}</TableCell>
+                            <TableCell>{f.store_count?.toLocaleString('ru-RU') || '—'}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openEditDialog('financial', f)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete('financial', f.id, `${company?.name || f.company_id} ${f.year}`)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* M&A Tab */}
+          <TabsContent value="ma">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">
+                  Слияния и поглощения (M&A)
+                  {filteredMA.length !== maEvents.length && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      (показано {filteredMA.length} из {maEvents.length})
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {filteredMA.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {maEvents.length === 0 ? 'Нет M&A событий. Добавьте первое!' : 'Ничего не найдено'}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Дата</TableHead>
+                        <TableHead>Покупатель</TableHead>
+                        <TableHead>Цель</TableHead>
+                        <TableHead>Сумма</TableHead>
+                        <TableHead className="max-w-xs">Описание</TableHead>
+                        <TableHead className="text-right w-[100px]">Действия</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMA.map((ma) => (
+                        <TableRow key={ma.id}>
+                          <TableCell className="font-mono text-sm">{ma.date}</TableCell>
+                          <TableCell className="font-medium">{ma.buyer}</TableCell>
+                          <TableCell>{ma.target}</TableCell>
+                          <TableCell className="text-sm">{ma.value || '—'}</TableCell>
+                          <TableCell className="max-w-xs">
+                            <p className="truncate text-sm text-muted-foreground">{ma.description || '—'}</p>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditDialog('ma', ma)}
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDelete('ma', ma.id, `${ma.buyer} → ${ma.target}`)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Import/Export Tab */}
+          <TabsContent value="import-export">
+            <ImportExportTab onDataImported={loadData} />
+          </TabsContent>
+
+          {/* Error Reports Tab */}
+          <TabsContent value="error-reports">
+            <ErrorReportsTab />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  );
+};
+
+export default Admin;
