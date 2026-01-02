@@ -15,3 +15,13 @@ yarn-error.log*
 coverage
 *.log
 
+# Исключить старую структуру React Router (не используется в Next.js)
+src/pages/
+src/App.tsx
+src/App.css
+src/main.tsx
+index.html
+vite.config.ts
+tsconfig.app.json
+tsconfig.node.json
+
