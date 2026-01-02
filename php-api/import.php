@@ -130,7 +130,7 @@ function importCompany($conn, $row) {
 }
 
 function importEvent($conn, $row) {
-    $id = isset($row['id']) && $row['id'] !== '' ? sanitize($row['id']) : null;
+    $id = isset($row['id']) && $row['id'] !== '' ? sanitize($row['id']) : uniqid('evt_');
     $company_id = sanitize($row['company_id'] ?? '');
     $date = sanitize($row['date'] ?? '');
     $title = sanitize($row['title'] ?? '');
@@ -142,25 +142,18 @@ function importEvent($conn, $row) {
         throw new Exception('company_id, date, title and category are required');
     }
 
-    if ($id) {
-        $sql = "INSERT INTO events (id, company_id, date, title, description, category, subcategory)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE
-                    company_id = VALUES(company_id),
-                    date = VALUES(date),
-                    title = VALUES(title),
-                    description = VALUES(description),
-                    category = VALUES(category),
-                    subcategory = VALUES(subcategory),
-                    updated_at = CURRENT_TIMESTAMP";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param('sssssss', $id, $company_id, $date, $title, $description, $category, $subcategory);
-    } else {
-        $sql = "INSERT INTO events (company_id, date, title, description, category, subcategory)
-                VALUES (?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param('ssssss', $company_id, $date, $title, $description, $category, $subcategory);
-    }
+    $sql = "INSERT INTO events (id, company_id, date, title, description, category, subcategory)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                company_id = VALUES(company_id),
+                date = VALUES(date),
+                title = VALUES(title),
+                description = VALUES(description),
+                category = VALUES(category),
+                subcategory = VALUES(subcategory),
+                updated_at = CURRENT_TIMESTAMP";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('sssssss', $id, $company_id, $date, $title, $description, $category, $subcategory);
     
     if (!$stmt->execute()) {
         throw new Exception($stmt->error);
